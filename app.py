@@ -1,9 +1,12 @@
+# app.py
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
+from babel.dates import format_date
+import streamlit as st
 
 # =========================
-# Tarot Numerology Core
+# Core data (anchor only)
 # =========================
-
 ANCHOR_CARDS = {
     1: "The Magician",
     2: "The High Priestess",
@@ -16,24 +19,24 @@ ANCHOR_CARDS = {
     9: "The Hermit",
 }
 
-# Nuansa (dipakai diam-diam saat hasil antara 10..22 muncul sebelum jadi 1 digit)
+# Nuansa overlay (10..22) — DIPAKAI DI BELAKANG LAYAR SAJA
 OVERLAY_NUANCE = {
-    10: "perputaran momentum dan momen yang tepat",
-    11: "penyelarasan yang jujur dan keputusan yang seimbang",
+    10: "perputaran momentum dan timing yang pas",
+    11: "penyelarasan yang jujur dan keputusan seimbang",
     12: "jeda sadar untuk melihat dari sudut pandang baru",
-    13: "transformasi bersih: menutup yang usang agar yang sehat tumbuh",
-    14: "meracik porsi yang pas—moderasi dan alkimia sikap",
-    15: "kesadaran batas dan negosiasi atas dorongan yang mengikat",
-    16: "koreksi mendadak yang justru menyadarkan inti masalah",
+    13: "transformasi tuntas—menutup yang usang agar yang sehat tumbuh",
+    14: "meracik porsi yang pas; moderasi dan harmonisasi",
+    15: "kesadaran batas & negosiasi atas dorongan yang mengikat",
+    16: "koreksi mendadak yang menyadarkan inti masalah",
     17: "harapan jangka panjang dan pemulihan yang tenang",
-    18: "kabut yang minta kejernihan: validasi rasa dan fakta",
+    18: "kabut yang minta kejernihan—validasi rasa dan fakta",
     19: "kejelasan, vitalitas, dan afirmasi pada hal yang hidup",
-    20: "panggilan batin dan evaluasi besar untuk naik kelas",
+    20: "panggilan batin & evaluasi besar untuk naik kelas",
     21: "penyelesaian siklus dan integrasi yang utuh",
     22: "awal segar yang menuntut keberanian ringan dan keluwesan",
 }
 
-# Interpretasi ringkas anchor (untuk merangkai narasi)
+# Ringkasan makna anchor untuk narasi
 ANCHOR_CORE = {
     1: "memulai dan mewujudkan hal yang kamu niatkan dengan fokus",
     2: "menenangkan diri agar intuisi terdengar jernih sebelum bertindak",
@@ -46,21 +49,20 @@ ANCHOR_CORE = {
     9: "merenungi makna agar keputusan lahir dari kejernihan",
 }
 
-# Kekuatan & tantangan (dipakai untuk paragraf natural, bukan bullet kaku)
 ANCHOR_STRENGTHS = {
     1: ["inisiatif tinggi", "resourceful", "cepat eksekusi saat tujuan jelas"],
-    2: ["intuisi tajam", "pendengar yang baik", "mampu membaca tanda halus"],
+    2: ["intuisi tajam", "pendengar yang baik", "membaca tanda-tanda halus"],
     3: ["hangat dan suportif", "ide subur", "membuat suasana hidup"],
     4: ["tegas terarah", "disiplin", "pandai membangun sistem"],
-    5: ["bernilai kuat", "suka belajar–mengajar", "jadi rujukan orang"],
+    5: ["berpegang nilai", "suka belajar–mengajar", "jadi rujukan orang"],
     6: ["harmonis", "empatik", "adil menimbang pilihan"],
-    7: ["fokus", "tahan gangguan", "punya dorongan maju yang konsisten"],
+    7: ["fokus", "tahan gangguan", "dorongan maju konsisten"],
     8: ["tenang namun kuat", "berani berkata 'cukup'", "stamina batin baik"],
     9: ["reflektif", "jernih menyaring informasi", "bijak berjarak"],
 }
 ANCHOR_CHALLENGES = {
     1: ["mulai banyak hal tapi kurang menutup loop", "mudah terdistraksi ide baru"],
-    2: ["terlalu berhati-hati hingga pasif", "keraguan saat sinyalnya samar"],
+    2: ["terlalu berhati-hati hingga pasif", "ragu saat sinyalnya samar"],
     3: ["mencari validasi luar", "energi tercecer ke banyak arah"],
     4: ["kaku pada aturan", "defensif terhadap perubahan"],
     5: ["terlalu textbook", "enggan mengubah pakem yang tak relevan"],
@@ -70,18 +72,21 @@ ANCHOR_CHALLENGES = {
     9: ["kelamaan di mode analisis", "terkesan menjauh dari orang"],
 }
 
+# =========================
+# Math helpers (BACKSTAGE)
+# =========================
 def digit_sum_once(n: int) -> int:
     return sum(int(d) for d in str(abs(int(n))))
 
 def reduce_with_overlay(total: int):
     """
-    Kembalikan (anchor_single, overlay_nuance_or_None).
-    Definisi overlay: hasil penjumlahan digit PERTAMA (digit_sum_once(total)) ada di 10..22.
-    Aturan khusus 22 -> 4 (bukan 0).
+    Return (anchor_single, overlay_phrase_or_None)
+    - Overlay terdeteksi dari penjumlahan digit PERTAMA (10..22).
+    - Aturan khusus 22 -> anchor 4 (BUKAN 0).
     """
     first = digit_sum_once(total)
     overlay = OVERLAY_NUANCE.get(first) if 10 <= first <= 22 else None
-    # Reduksi ke satu digit; jika first==22, anchor akhirnya 4
+    # Anchor final (1..9)
     if first == 22:
         anchor = 4
     else:
@@ -90,62 +95,117 @@ def reduce_with_overlay(total: int):
             anchor = digit_sum_once(anchor)
     return anchor, overlay
 
-# ============ Perhitungan Sesuai Aturan Lia ============
+def effective_year_for_running(dob: date, today: date) -> int:
+    dob_this_year = date(today.year, dob.month, dob.day)
+    return today.year if today >= dob_this_year else today.year - 1
+
+# =========================
+# Computations (BACKSTAGE)
+# =========================
 def compute_tp(dob: date):
-    # Karakter: tanggal + bulan + tahun_lahir
     total = dob.day + dob.month + dob.year
     anchor, overlay = reduce_with_overlay(total)
     return anchor, overlay, ANCHOR_CARDS[anchor]
 
 def compute_life_value(dob: date, tp_anchor: int):
-    # Life Value: tahun lahir + TP
     total = dob.year + tp_anchor
     anchor, overlay = reduce_with_overlay(total)
     return anchor, overlay, ANCHOR_CARDS[anchor]
 
-def effective_year_for_running(dob: date, today: date):
-    # Tahun berjalan: tahun SETELAH tanggal lahir tahun berjalan; kalau belum ultah, pakai tahun sebelumnya
-    dob_this_year = date(today.year, dob.month, dob.day)
-    return today.year if today >= dob_this_year else today.year - 1
-
 def compute_running_year(dob: date, tp_anchor: int, today: date):
-    eff_year = effective_year_for_running(dob, today)
-    total = eff_year + tp_anchor
+    yr = effective_year_for_running(dob, today)
+    total = yr + tp_anchor
     anchor, overlay = reduce_with_overlay(total)
-    return eff_year, anchor, overlay, ANCHOR_CARDS[anchor]
-
-def compute_running_month(tp_anchor: int, today: date):
-    # Bulan berjalan: bulan + tahun sekarang + TP
-    total = today.month + today.year + tp_anchor
-    anchor, overlay = reduce_with_overlay(total)
-    return anchor, overlay, ANCHOR_CARDS[anchor]
-
-def compute_running_day(tp_anchor: int, today: date):
-    # Tanggal berjalan: tanggal + bulan + tahun (hari ini) + TP
-    total = today.day + today.month + today.year + tp_anchor
-    anchor, overlay = reduce_with_overlay(total)
-    return anchor, overlay, ANCHOR_CARDS[anchor]
+    return yr, anchor, overlay, ANCHOR_CARDS[anchor]
 
 # =========================
-# Narasi (ala Mas Koala)
+# Narrative builders
 # =========================
-
-def join_list_natural(items):
-    if not items:
-        return ""
-    if len(items) == 1:
-        return items[0]
+def join_list(items):
+    if not items: return ""
+    if len(items) == 1: return items[0]
     return ", ".join(items[:-1]) + ", dan " + items[-1]
 
-def make_paragraph_character(anchor: int, name_card: str):
-    plus = join_list_natural(ANCHOR_STRENGTHS[anchor][:3])
-    minus = join_list_natural(ANCHOR_CHALLENGES[anchor][:2])
+DISCLAIMER = (
+    "Disclaimer: Tarot numerology bukan ramalan masa depan. Ini peta simbolik untuk membantu "
+    "refleksi arah, pola, potensi, dan tantangan. Kamu tetap memegang kemudi keputusanmu."
+)
+
+def make_character_para(anchor: int, card: str):
     core = ANCHOR_CORE[anchor]
+    plus = join_list(ANCHOR_STRENGTHS[anchor][:3])
+    minus = join_list(ANCHOR_CHALLENGES[anchor][:2])
     return (
-        f"Karakter — *{name_card}*. Energi dasarnya mengajakmu untuk {core}. "
+        f"Karakter — *{card}*. Energi dasarnya mengajakmu untuk {core}. "
         f"Kamu cenderung {plus}. Waspadai kecenderungan {minus}."
     )
 
+def make_lv_para(anchor: int, card: str, overlay: str | None):
+    core = ANCHOR_CORE[anchor]
+    base = f"Life Value — *{card}*. Nilai hidupmu menguat ketika kamu {core}."
+    # Sisipkan overlay sebagai frasa umum TANPA menyebut kartu/angka/istilah
+    if overlay:
+        base += f" Ada kalanya fase penting ditandai oleh {overlay}."
+    return base
+
+def make_potency_para(tp_anchor: int, lv_anchor: int):
+    tpc = ANCHOR_CARDS[tp_anchor]; lvc = ANCHOR_CARDS[lv_anchor]
+    return (
+        f"Potensi ke depan. Perpaduan {tpc} dan {lvc} membuatmu selaras saat memadukan "
+        f"niat yang jernih dengan langkah yang disiplin. Pilih arena yang butuh kepekaan arah "
+        f"dan eksekusi rapi agar daya dorongmu terasa."
+    )
+
+def make_year_para(year_label: int, anchor: int, card: str, overlay: str | None):
+    core = ANCHOR_CORE[anchor]
+    line = (
+        f"Tantangan di tahun {year_label}. Fasenya condong ke *{card}*: "
+        f"fokus untuk {core} sepanjang tahun ini."
+    )
+    if overlay:
+        line += f" Jaga keluwesan ritme—akan ada momen {overlay} yang mengajakmu menyelaraskan prioritas."
+    return line
+
+# =========================
+# UI (Streamlit)
+# =========================
+st.set_page_config(page_title="LiaOS Tarot Numerology", page_icon="🔮", layout="centered")
+
+st.title("LiaOS Tarot Numerology")
+st.caption("Semua perhitungan di belakang layar. Hasil disajikan sebagai narasi ringkas.")
+
+name = st.text_input("Nama (opsional)", "")
+dob_in = st.text_input("Tanggal lahir (DD/MM/YYYY)", "")
+
+if st.button("Baca Profil"):
+    try:
+        tz = ZoneInfo("Asia/Jakarta")
+        today = datetime.now(tz).date()
+
+        dob = datetime.strptime(dob_in.strip(), "%d/%m/%Y").date()
+        dob_human = format_date(dob, format="d MMMM yyyy", locale="id_ID")
+
+        # Hitung (BACKSTAGE)
+        tp_anchor, tp_overlay, tp_card = compute_tp(dob)
+        lv_anchor, lv_overlay, lv_card = compute_life_value(dob, tp_anchor)
+        eff_year, ty_anchor, ty_overlay, ty_card = compute_running_year(dob, tp_anchor, today)
+
+        # Narasi (NO BRIDGE MENTION)
+        header = f"{name.strip() or '—'}\n{dob_human}"
+        para_character = make_character_para(tp_anchor, tp_card)
+        para_lv = make_lv_para(lv_anchor, lv_card, lv_overlay)
+        para_potency = make_potency_para(tp_anchor, lv_anchor)
+        para_year = make_year_para(eff_year, ty_anchor, ty_card, ty_overlay)
+
+        st.markdown(f"**{header}**")
+        st.write(para_character)
+        st.write(para_lv)
+        st.write(para_potency)
+        st.write(para_year)
+        st.markdown(f"—\n{DISCLAIMER}")
+
+    except Exception as e:
+        st.error(f"Input tidak valid. Pastikan format tanggal: DD/MM/YYYY. Detail: {e}")
 def make_paragraph_life_value(anchor: int, name_card: str, overlay_text: str | None):
     core = ANCHOR_CORE[anchor]
     base = f"Life Value — *{name_card}*. Nilai hidupmu menguat ketika kamu {core}."
