@@ -1,14 +1,10 @@
-
-import streamlit as st
-import pandas as pd
 from datetime import datetime, date
-import calendar
 
-st.set_page_config(page_title="Numerology Tarot App", page_icon="🔮", layout="wide")
+# =========================
+# Tarot Numerology Core
+# =========================
 
-# ---------- Helpers ----------
-TAROT = {
-    0: "The Fool",
+ANCHOR_CARDS = {
     1: "The Magician",
     2: "The High Priestess",
     3: "The Empress",
@@ -18,195 +14,208 @@ TAROT = {
     7: "The Chariot",
     8: "Strength",
     9: "The Hermit",
-    10: "Wheel of Fortune",
-    11: "Justice",
-    12: "The Hanged Man",
-    13: "Death",
-    14: "Temperance",
-    15: "The Devil",
-    16: "The Tower",
-    17: "The Star",
-    18: "The Moon",
-    19: "The Sun",
-    20: "Judgement",
-    21: "The World",
-    22: "The Fool (Master Cycle)",
 }
 
-PYTHAGOREAN = {ch: val for ch, val in zip(
-    list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
-    [1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8]
-)}
+# Nuansa (dipakai diam-diam saat hasil antara 10..22 muncul sebelum jadi 1 digit)
+OVERLAY_NUANCE = {
+    10: "perputaran momentum dan momen yang tepat",
+    11: "penyelarasan yang jujur dan keputusan yang seimbang",
+    12: "jeda sadar untuk melihat dari sudut pandang baru",
+    13: "transformasi bersih: menutup yang usang agar yang sehat tumbuh",
+    14: "meracik porsi yang pas—moderasi dan alkimia sikap",
+    15: "kesadaran batas dan negosiasi atas dorongan yang mengikat",
+    16: "koreksi mendadak yang justru menyadarkan inti masalah",
+    17: "harapan jangka panjang dan pemulihan yang tenang",
+    18: "kabut yang minta kejernihan: validasi rasa dan fakta",
+    19: "kejelasan, vitalitas, dan afirmasi pada hal yang hidup",
+    20: "panggilan batin dan evaluasi besar untuk naik kelas",
+    21: "penyelesaian siklus dan integrasi yang utuh",
+    22: "awal segar yang menuntut keberanian ringan dan keluwesan",
+}
 
-def parse_date(text):
-    if isinstance(text, date):
-        return text
-    # try dd/mm/yyyy or d/m/yyyy
-    try:
-        return datetime.strptime(str(text), "%d/%m/%Y").date()
-    except:
-        try:
-            return datetime.strptime(str(text), "%Y-%m-%d").date()
-        except:
-            return None
+# Interpretasi ringkas anchor (untuk merangkai narasi)
+ANCHOR_CORE = {
+    1: "memulai dan mewujudkan hal yang kamu niatkan dengan fokus",
+    2: "menenangkan diri agar intuisi terdengar jernih sebelum bertindak",
+    3: "menumbuhkan ide dan relasi dengan kehangatan yang kreatif",
+    4: "menegaskan struktur, batas sehat, dan arah kepemimpinan",
+    5: "berpegang pada nilai yang bijak sambil berbagi pengetahuan",
+    6: "membuat pilihan yang selaras antara hati dan akal",
+    7: "menjaga kendali arah dan konsisten menuju tujuan",
+    8: "menguat lewat ketenangan, kesabaran, dan pengendalian diri",
+    9: "merenungi makna agar keputusan lahir dari kejernihan",
+}
+
+# Kekuatan & tantangan (dipakai untuk paragraf natural, bukan bullet kaku)
+ANCHOR_STRENGTHS = {
+    1: ["inisiatif tinggi", "resourceful", "cepat eksekusi saat tujuan jelas"],
+    2: ["intuisi tajam", "pendengar yang baik", "mampu membaca tanda halus"],
+    3: ["hangat dan suportif", "ide subur", "membuat suasana hidup"],
+    4: ["tegas terarah", "disiplin", "pandai membangun sistem"],
+    5: ["bernilai kuat", "suka belajar–mengajar", "jadi rujukan orang"],
+    6: ["harmonis", "empatik", "adil menimbang pilihan"],
+    7: ["fokus", "tahan gangguan", "punya dorongan maju yang konsisten"],
+    8: ["tenang namun kuat", "berani berkata 'cukup'", "stamina batin baik"],
+    9: ["reflektif", "jernih menyaring informasi", "bijak berjarak"],
+}
+ANCHOR_CHALLENGES = {
+    1: ["mulai banyak hal tapi kurang menutup loop", "mudah terdistraksi ide baru"],
+    2: ["terlalu berhati-hati hingga pasif", "keraguan saat sinyalnya samar"],
+    3: ["mencari validasi luar", "energi tercecer ke banyak arah"],
+    4: ["kaku pada aturan", "defensif terhadap perubahan"],
+    5: ["terlalu textbook", "enggan mengubah pakem yang tak relevan"],
+    6: ["menunda keputusan agar semua senang", "menghindari konflik penting"],
+    7: ["terlalu ngotot pada rute sendiri", "sulit melihat opsi alternatif"],
+    8: ["memendam sampai meledak", "terlalu keras pada diri sendiri"],
+    9: ["kelamaan di mode analisis", "terkesan menjauh dari orang"],
+}
 
 def digit_sum_once(n: int) -> int:
     return sum(int(d) for d in str(abs(int(n))))
 
-def reduce_single(n: int) -> int:
-    s = digit_sum_once(n)
-    if s < 10:
-        return s
-    return digit_sum_once(s)
+def reduce_with_overlay(total: int):
+    """
+    Kembalikan (anchor_single, overlay_nuance_or_None).
+    Definisi overlay: hasil penjumlahan digit PERTAMA (digit_sum_once(total)) ada di 10..22.
+    Aturan khusus 22 -> 4 (bukan 0).
+    """
+    first = digit_sum_once(total)
+    overlay = OVERLAY_NUANCE.get(first) if 10 <= first <= 22 else None
+    # Reduksi ke satu digit; jika first==22, anchor akhirnya 4
+    if first == 22:
+        anchor = 4
+    else:
+        anchor = first
+        while anchor > 9:
+            anchor = digit_sum_once(anchor)
+    return anchor, overlay
 
-def bridge_of(n: int):
-    s = digit_sum_once(n)
-    return s if (10 <= s <= 22) else ""
+# ============ Perhitungan Sesuai Aturan Lia ============
+def compute_tp(dob: date):
+    # Karakter: tanggal + bulan + tahun_lahir
+    total = dob.day + dob.month + dob.year
+    anchor, overlay = reduce_with_overlay(total)
+    return anchor, overlay, ANCHOR_CARDS[anchor]
 
-def tarot_name(num: int) -> str:
-    return TAROT.get(num, "N/A")
+def compute_life_value(dob: date, tp_anchor: int):
+    # Life Value: tahun lahir + TP
+    total = dob.year + tp_anchor
+    anchor, overlay = reduce_with_overlay(total)
+    return anchor, overlay, ANCHOR_CARDS[anchor]
 
-def name_value(name: str) -> int:
-    if not name:
-        return 0
-    total = 0
-    for ch in name.upper():
-        total += PYTHAGOREAN.get(ch, 0)
-    return total
+def effective_year_for_running(dob: date, today: date):
+    # Tahun berjalan: tahun SETELAH tanggal lahir tahun berjalan; kalau belum ultah, pakai tahun sebelumnya
+    dob_this_year = date(today.year, dob.month, dob.day)
+    return today.year if today >= dob_this_year else today.year - 1
 
-# ---------- Sidebar Inputs ----------
-st.title("🔮 Numerology Tarot – Auto Yearly & Calendar")
-name = st.text_input("Nama", value="")
-dob_text = st.text_input("Tanggal Lahir (dd/mm/yyyy)", value="19/07/1977")
-calendar_year = st.number_input("Tahun Kalender (untuk Calendar)", min_value=1900, max_value=2100, value=2025, step=1)
-calendar_month = st.number_input("Bulan (1-12)", min_value=1, max_value=12, value=8, step=1)
+def compute_running_year(dob: date, tp_anchor: int, today: date):
+    eff_year = effective_year_for_running(dob, today)
+    total = eff_year + tp_anchor
+    anchor, overlay = reduce_with_overlay(total)
+    return eff_year, anchor, overlay, ANCHOR_CARDS[anchor]
 
-dob = parse_date(dob_text)
+def compute_running_month(tp_anchor: int, today: date):
+    # Bulan berjalan: bulan + tahun sekarang + TP
+    total = today.month + today.year + tp_anchor
+    anchor, overlay = reduce_with_overlay(total)
+    return anchor, overlay, ANCHOR_CARDS[anchor]
 
-if not dob:
-    st.error("Format tanggal tidak dikenali. Gunakan dd/mm/yyyy, misal 19/07/1977.")
-    st.stop()
+def compute_running_day(tp_anchor: int, today: date):
+    # Tanggal berjalan: tanggal + bulan + tahun (hari ini) + TP
+    total = today.day + today.month + today.year + tp_anchor
+    anchor, overlay = reduce_with_overlay(total)
+    return anchor, overlay, ANCHOR_CARDS[anchor]
 
-# ---------- Core Numbers ----------
-raw_sum = dob.day + dob.month + dob.year
-char_digit_sum = digit_sum_once(raw_sum)
-char_single = reduce_single(raw_sum)
-char_bridge = bridge_of(raw_sum)
+# =========================
+# Narasi (ala Mas Koala)
+# =========================
 
-life_raw = dob.year + char_single
-life_digit_sum = digit_sum_once(life_raw)
-life_single = reduce_single(life_raw)
-life_bridge = bridge_of(life_raw)
+def join_list_natural(items):
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + ", dan " + items[-1]
 
-# Name numerology
-name_total = name_value(name)
-name_digit_sum = digit_sum_once(name_total) if name_total else 0
-name_single = reduce_single(name_total) if name_total else 0
-name_bridge = bridge_of(name_total) if name_total else ""
+def make_paragraph_character(anchor: int, name_card: str):
+    plus = join_list_natural(ANCHOR_STRENGTHS[anchor][:3])
+    minus = join_list_natural(ANCHOR_CHALLENGES[anchor][:2])
+    core = ANCHOR_CORE[anchor]
+    return (
+        f"Karakter — *{name_card}*. Energi dasarnya mengajakmu untuk {core}. "
+        f"Kamu cenderung {plus}. Waspadai kecenderungan {minus}."
+    )
 
-# Mapping
-def to_tarot(num, bridge=""):
-    return tarot_name(num), (tarot_name(int(bridge)) if str(bridge).strip() != "" else "")
+def make_paragraph_life_value(anchor: int, name_card: str, overlay_text: str | None):
+    core = ANCHOR_CORE[anchor]
+    base = f"Life Value — *{name_card}*. Nilai hidupmu menguat ketika kamu {core}."
+    if overlay_text:
+        base += f" Tahun-tahun penting sering ditandai oleh {overlay_text}."
+    return base
 
-char_tarot, char_bridge_tarot = to_tarot(char_single, char_bridge)
-life_tarot, life_bridge_tarot = to_tarot(life_single, life_bridge)
-name_tarot, name_bridge_tarot = to_tarot(name_single, name_bridge)
+def make_paragraph_potency(tp_anchor: int, lv_anchor: int):
+    # Ringkas: padukan karakter + LV jadi arah kekuatan
+    tp_word = ANCHOR_CARDS[tp_anchor]
+    lv_word = ANCHOR_CARDS[lv_anchor]
+    return (
+        f"Potensi ke depan. Perpaduan {tp_word} dan {lv_word} membuatmu selaras saat "
+        f"memadukan niat yang jernih dengan langkah yang disiplin. Pilih arena yang "
+        f"membutuhkan dua hal itu: kepekaan arah dan eksekusi yang rapi."
+    )
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.subheader("Karakter (DOB)")
-    st.write({
-        "RawSum": raw_sum, "DigitSum": char_digit_sum,
-        "Single": char_single, "Bridge": char_bridge,
-        "Tarot": char_tarot, "Bridge Tarot": char_bridge_tarot
-    })
-with col2:
-    st.subheader("Life Value")
-    st.write({
-        "LifeRaw": life_raw, "DigitSum": life_digit_sum,
-        "Single": life_single, "Bridge": life_bridge,
-        "Tarot": life_tarot, "Bridge Tarot": life_bridge_tarot
-    })
-with col3:
-    st.subheader("Nama")
-    st.write({
-        "Total": name_total, "DigitSum": name_digit_sum,
-        "Single": name_single, "Bridge": name_bridge,
-        "Tarot": name_tarot, "Bridge Tarot": name_bridge_tarot
-    })
+def make_paragraph_year(year_label: int, anchor: int, name_card: str, overlay_text: str | None):
+    core = ANCHOR_CORE[anchor]
+    line = (
+        f"Tantangan di tahun {year_label}. Fasenya condong ke *{name_card}*: "
+        f"fokus untuk {core} sepanjang tahun ini."
+    )
+    if overlay_text:
+        line += f" Di baliknya, ada nuansa {overlay_text}, jadi gunakan momen ini untuk menyelaraskan ritme dan prioritas."
+    return line
 
-st.markdown("---")
+DISCLAIMER = (
+    "Disclaimer: Tarot numerology bukan ramalan masa depan. Ini peta simbolik untuk membantu "
+    "refleksi arah, pola, potensi, dan tantangan. Kamu tetap memegang kemudi keputusanmu."
+)
 
-# ---------- Yearly Grid ----------
-st.header("Yearly Grid")
-max_age = 88
-years = [dob.year + a for a in range(max_age)]
-year_digit_sums = [digit_sum_once(y) for y in years]
-toy_unreduced = [char_single + s for s in year_digit_sums]
-toy_single = [reduce_single(v) for v in toy_unreduced]
-toy_bridge = [bridge_of(v) for v in toy_unreduced]
+def build_full_profile(name: str, dob_str: str, today: date | None = None) -> str:
+    """
+    Format final:
+    Nama & DOB
+    Karakter (narasi)
+    Life Value (narasi)
+    Potensi ke depan (narasi)
+    Tantangan Tahun Berjalan (narasi)
+    Disclaimer
+    """
+    if today is None:
+        today = date.today()
+    dob = datetime.strptime(dob_str, "%d/%m/%Y").date()
 
-# Build dataframe with tarot rows 21..0 as index
-rows = list(range(21, -1, -1))
-df = pd.DataFrame(index=rows, columns=years)
-for idx, y in enumerate(years):
-    ts = toy_single[idx]
-    tb = toy_bridge[idx]
-    # mark ts as 'S' and tb as 'B' (for coloring); keep index number for readability
-    df.at[ts, y] = "S"
-    if str(tb) != "":
-        df.at[int(tb), y] = "B"
+    # Hitungan belakang layar
+    tp_anchor, tp_overlay, tp_card = compute_tp(dob)
+    lv_anchor, lv_overlay, lv_card = compute_life_value(dob, tp_anchor)
+    eff_year, ty_anchor, ty_overlay, ty_card = compute_running_year(dob, tp_anchor, today)
 
-df.index.name = "Tarot Num"
-# Styler for colors (blue S, red B)
-def color_fn(val):
-    if val == "S":
-        return "background-color: #7EB6FF"
-    if val == "B":
-        return "background-color: #FF6B6B"
-    return ""
+    # Narasi
+    header = f"{name}\n{dob.strftime('%d %B %Y')}"
+    para_character = make_paragraph_character(tp_anchor, tp_card)
+    para_lv = make_paragraph_life_value(lv_anchor, lv_card, lv_overlay)
+    para_potency = make_paragraph_potency(tp_anchor, lv_anchor)
+    para_year = make_paragraph_year(eff_year, ty_anchor, ty_card, ty_overlay)
 
-st.dataframe(df.style.applymap(color_fn), use_container_width=True)
+    return (
+        f"{header}\n\n"
+        f"{para_character}\n\n"
+        f"{para_lv}\n\n"
+        f"{para_potency}\n\n"
+        f"{para_year}\n\n"
+        f"{DISCLAIMER}"
+    )
 
-# ---------- Calendar ----------
-st.header("Calendar")
-# ToY for selected calendar year
-year_sum = digit_sum_once(calendar_year)
-toy_selected = char_single + year_sum
-toy_selected_single = reduce_single(toy_selected)
-
-# Build month grid 6x7
-cal = calendar.Calendar(firstweekday=0)  # Monday=0? (Python uses Monday as 0 by default in some contexts)
-month_days = list(cal.itermonthdates(calendar_year, calendar_month))
-
-# Make 6x7 grid mapping days of current month, else empty
-grid = [["" for _ in range(7)] for _ in range(6)]
-grid_card = [["" for _ in range(7)] for _ in range(6)]
-r = c = 0
-for d in month_days:
-    if d.month != calendar_month and (r == 0 and d.day > 7):
-        # skip leading previous month spill
-        continue
-    if d.month != calendar_month and d.day < 15 and r > 0:
-        # trailing next month spill, allow display as empty
-        continue
-    # compute position
-    weekday = d.weekday()  # Monday=0 .. Sunday=6
-    if r == 0 and d.day == 1:
-        c = weekday
-    if d.month == calendar_month:
-        grid[r][weekday] = d.day
-        daily_unreduced = toy_selected + d.day
-        daily_single = reduce_single(daily_unreduced)
-        daily_bridge = bridge_of(daily_unreduced)
-        grid_card[r][weekday] = f"{daily_single} ({TAROT.get(daily_single,'')})" + (f" | B:{daily_bridge}" if str(daily_bridge) != "" else "")
-    if weekday == 6:
-        r += 1
-
-df_days = pd.DataFrame(grid, columns=list("Mon Tue Wed Thu Fri Sat Sun".split()))
-df_cards = pd.DataFrame(grid_card, columns=list("Mon Tue Wed Thu Fri Sat Sun".split()))
-
-st.subheader("Tanggal")
-st.dataframe(df_days, use_container_width=True)
-st.subheader("Kartu Harian")
-st.dataframe(df_cards, use_container_width=True)
+# =========================
+# Contoh penggunaan
+# =========================
+if __name__ == "__main__":
+    # Contoh test: ganti sesuai kebutuhanmu
+    print(build_full_profile("Bapak Andalas", "21/06/1961"))
